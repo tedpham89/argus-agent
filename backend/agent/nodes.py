@@ -12,7 +12,10 @@ from backend.tools import get_tool_descriptions, get_tool_by_name
 
 logger = logging.getLogger(__name__)
 
-llm = ChatAnthropic(model="claude-sonnet-4-20250514", max_tokens=4096)
+
+def _get_llm():
+    """Lazy-init the LLM so that env vars from .env are loaded first."""
+    return ChatAnthropic(model="claude-sonnet-4-20250514", max_tokens=4096)
 
 
 async def planner_node(state: AgentState) -> dict:
@@ -22,7 +25,7 @@ async def planner_node(state: AgentState) -> dict:
 
     prompt = PLANNER_PROMPT.format(tool_descriptions=tool_descriptions)
 
-    response = await llm.ainvoke([
+    response = await _get_llm().ainvoke([
         SystemMessage(content=prompt),
         HumanMessage(content=user_message),
     ])
@@ -97,8 +100,9 @@ async def validator_node(state: AgentState) -> dict:
         plan_results=plan_results,
     )
 
-    response = await llm.ainvoke([
+    response = await _get_llm().ainvoke([
         SystemMessage(content=prompt),
+        HumanMessage(content="Evaluate the plan results above."),
     ])
 
     try:
@@ -133,8 +137,9 @@ async def response_node(state: AgentState) -> dict:
         plan_results=plan_results,
     )
 
-    response = await llm.ainvoke([
+    response = await _get_llm().ainvoke([
         SystemMessage(content=prompt),
+        HumanMessage(content="Synthesize the results into a response."),
     ])
 
     return {"final_response": response.content}
