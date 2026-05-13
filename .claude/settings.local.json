@@ -6,7 +6,11 @@
       "Bash(.venv/Scripts/python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000)",
       "Bash(curl:*)",
       "Bash(taskkill //F //PID 93780)",
-      "Bash(taskkill //F //PID 242292)"
+      "Bash(taskkill //F //PID 242292)",
+      "Bash(npm create:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx vite:*)"
     ]
   }
 }

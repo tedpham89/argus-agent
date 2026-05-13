@@ -1,9 +1,12 @@
 import os
+from pathlib import Path
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from backend.db.init_db import init_database
@@ -67,3 +70,19 @@ async def agent_approve(req: ApprovalRequest):
     """Resume agent after human approval/rejection."""
     result = await resume_agent(req.thread_id, req.approved)
     return result
+
+
+# ---------- Static frontend ----------
+
+DIST_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+
+if DIST_DIR.is_dir():
+    app.mount("/assets", StaticFiles(directory=DIST_DIR / "assets"), name="static")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        """Serve the React SPA — all non-API routes fall through to index.html."""
+        file = DIST_DIR / full_path
+        if file.is_file():
+            return FileResponse(file)
+        return FileResponse(DIST_DIR / "index.html")

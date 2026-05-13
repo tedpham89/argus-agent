@@ -10,7 +10,7 @@ A financial operations agent that takes natural language instructions about an i
 ## Current State
 - Phase 1 COMPLETE: FastAPI skeleton deployed, /health endpoint working
 - Phase 2 TODO: Get the LangGraph agent loop working end-to-end
-- Phase 3 TODO: React frontend (chat UI, plan viewer, confirmation modal)
+- Phase 3 COMPLETE: React frontend (ChatPanel, PlanViewer, ConfirmModal)
 
 ## Tech Stack
 - Python 3.11, FastAPI, LangGraph, langchain-anthropic
