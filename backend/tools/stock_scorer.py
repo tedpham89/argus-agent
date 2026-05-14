@@ -1,12 +1,9 @@
-"""Stock scorer tool — mock implementation for public repo.
-
-In production, this calls the private Aerondight API.
-Set AERONDIGHT_API_URL and AERONDIGHT_API_KEY env vars to use real scores.
-"""
+"""Stock scorer tool — uses synced Aerondight data when available, falls back to mock."""
 
 import json
-import os
 from langchain_core.tools import tool
+
+from backend.db.aerondight_db import db_exists, get_connection
 
 # Mock scores for demo purposes
 MOCK_SCORES = {
@@ -23,21 +20,54 @@ MOCK_SCORES = {
 }
 
 
+def _query_real_score(ticker: str) -> dict | None:
+    """Try to get real score from synced Aerondight DB."""
+    if not db_exists():
+        return None
+    # Aerondight uses "TICKER.US" format
+    symbol = f"{ticker}.US" if "." not in ticker else ticker
+    conn = get_connection()
+    row = conn.execute(
+        """SELECT * FROM analysis_scores
+           WHERE symbol = ? AND model_type = 'long_term'
+           ORDER BY date DESC LIMIT 1""",
+        (symbol,),
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    return dict(row)
+
+
 @tool
 def score_stock(ticker: str) -> str:
     """Score a stock using a quantitative multi-factor model.
-    Returns composite score (0-100), factor breakdown
-    (momentum, value, quality, growth), and signal (BUY/HOLD/AVOID)."""
+    Returns composite score (0-100), factor breakdown, and signal (BUY/HOLD/AVOID).
+    Uses real Aerondight research scores when available."""
     ticker = ticker.strip().upper()
 
-    # Check if private API is configured
-    api_url = os.getenv("AERONDIGHT_API_URL")
-    api_key = os.getenv("AERONDIGHT_API_KEY")
-
-    if api_url and api_key:
-        # TODO: Call real Aerondight API
-        # response = httpx.get(f"{api_url}/score/{ticker}", headers={"Authorization": f"Bearer {api_key}"})
-        pass
+    real = _query_real_score(ticker)
+    if real:
+        # Scores in Aerondight are 0-10, scale to 0-100 for display
+        return json.dumps({
+            "ticker": ticker,
+            "composite_score": round(real["combined_score"] * 10, 1),
+            "factors": {
+                "fundamental": round(real["fundamental_score"] * 10, 1),
+                "valuation": round(real["valuation_score"] * 10, 1),
+                "quality": round(real["quality_score"] * 10, 1),
+                "growth": round(real["growth_score"] * 10, 1),
+                "balance_sheet": round(real["balance_sheet_score"] * 10, 1),
+                "technical": round(real["technical_score"] * 10, 1),
+                "sector": round(real["sector_score"] * 10, 1),
+                "trend": round(real["trend_score"] * 10, 1),
+            },
+            "signal": real["signal"],
+            "confidence": "HIGH" if real["combined_score"] > 7.5 or real["combined_score"] < 4.0 else "MEDIUM",
+            "as_of": real["date"],
+            "model_type": real["model_type"],
+            "source": "aerondight",
+        }, indent=2)
 
     # Fall back to mock scores
     if ticker in MOCK_SCORES:

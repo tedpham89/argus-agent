@@ -1,32 +1,55 @@
-"""Market regime classifier — mock implementation for public repo.
-
-In production, this calls the private Aerondight API for real regime state
-derived from breadth, momentum, and sector rotation signals.
-"""
+"""Market regime classifier — uses synced Aerondight data when available, falls back to mock."""
 
 import json
-import os
 from datetime import datetime
 
 from langchain_core.tools import tool
+
+from backend.db.aerondight_db import db_exists, get_connection
+
+REGIME_GUIDANCE = {
+    "bull_tech": "Bull regime led by tech/growth. Favor quality growth and momentum factors. Full allocation appropriate.",
+    "bull_broad": "Broad bull market with wide participation. Favor equal-weight and value factors. Full allocation appropriate.",
+    "correction": "Market correction underway. Reduce position sizes by 30-50%. Favor defensive sectors and quality factor.",
+    "crisis": "Crisis regime — risk-off. Minimize equity exposure. Favor cash, treasuries, and inverse correlation assets.",
+}
+
+
+def _query_real_regime() -> dict | None:
+    """Try to get real regime from synced Aerondight DB."""
+    if not db_exists():
+        return None
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM regime_states ORDER BY date DESC LIMIT 1"
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    return dict(row)
 
 
 @tool
 def get_market_regime() -> str:
     """Get current market regime classification.
-    Returns regime label (RISK_ON/RISK_OFF/TRANSITIONAL/CRISIS),
-    confidence, supporting indicators, and positioning guidance."""
+    Returns regime label, confidence, and positioning guidance.
+    Uses real Aerondight regime model when available."""
 
-    # Check if private API is configured
-    api_url = os.getenv("AERONDIGHT_API_URL")
-    api_key = os.getenv("AERONDIGHT_API_KEY")
+    real = _query_real_regime()
+    if real:
+        label = real["hmm_regime_label"] or "unknown"
+        return json.dumps({
+            "regime": label,
+            "regime_id": real["hmm_regime"],
+            "xgb_regime_id": real["xgb_regime"],
+            "xgb_confidence": round(real["xgb_confidence"], 4) if real["xgb_confidence"] else None,
+            "regime_agreement": bool(real["regime_agreement"]),
+            "positioning_guidance": REGIME_GUIDANCE.get(label, "No specific guidance for this regime."),
+            "as_of": real["date"],
+            "source": "aerondight",
+        }, indent=2)
 
-    if api_url and api_key:
-        # TODO: Call real Aerondight API
-        # response = httpx.get(f"{api_url}/regime", headers={"Authorization": f"Bearer {api_key}"})
-        pass
-
-    # Mock regime data — realistic snapshot
+    # Mock regime data
     return json.dumps({
         "regime": "TRANSITIONAL",
         "confidence": 0.65,

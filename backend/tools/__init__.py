@@ -9,6 +9,7 @@ from backend.tools.market_data import get_market_data
 from backend.tools.compliance import check_compliance
 from backend.tools.stock_scorer import score_stock
 from backend.tools.regime import get_market_regime
+from backend.tools.historical_scores import query_historical_scores
 
 # All tools the agent can call
 TOOLS = [
@@ -19,6 +20,7 @@ TOOLS = [
     check_compliance,
     score_stock,
     get_market_regime,
+    query_historical_scores,
 ]
 
 _TOOL_MAP = {tool.name: tool for tool in TOOLS}

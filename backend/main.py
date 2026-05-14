@@ -1,24 +1,28 @@
 import os
 from pathlib import Path
 from contextlib import asynccontextmanager
+from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from backend.db.init_db import init_database
-from backend.agent.graph import run_agent, resume_agent
+from backend.db.aerondight_db import init_aerondight_db, get_connection as get_aero_conn
 
 load_dotenv()
+
+from backend.agent.graph import run_agent, resume_agent
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize database and vector store on startup."""
     init_database()
+    init_aerondight_db()
     yield
 
 
@@ -51,6 +55,11 @@ class ApprovalRequest(BaseModel):
     approved: bool
 
 
+class SyncPayload(BaseModel):
+    scores: list[dict] | None = None
+    regime: list[dict] | None = None
+
+
 # ---------- Routes ----------
 
 @app.get("/health")
@@ -70,6 +79,49 @@ async def agent_approve(req: ApprovalRequest):
     """Resume agent after human approval/rejection."""
     result = await resume_agent(req.thread_id, req.approved)
     return result
+
+
+# ---------- Data sync ----------
+
+@app.post("/data/sync")
+async def data_sync(payload: SyncPayload, x_api_key: Optional[str] = Header(None)):
+    """Receive synced scores and regime data from Aerondight research system."""
+    sync_key = os.getenv("SYNC_API_KEY")
+    if not sync_key:
+        raise HTTPException(status_code=503, detail="Sync not configured")
+    if x_api_key != sync_key:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    conn = get_aero_conn()
+    counts = {"scores": 0, "regime": 0}
+
+    if payload.scores:
+        conn.executemany(
+            """INSERT OR REPLACE INTO analysis_scores
+               (symbol, date, model_type, fundamental_score, valuation_score,
+                quality_score, growth_score, balance_sheet_score, technical_score,
+                sector_score, combined_score, signal, trend_score, updated_at)
+               VALUES (:symbol, :date, :model_type, :fundamental_score, :valuation_score,
+                       :quality_score, :growth_score, :balance_sheet_score, :technical_score,
+                       :sector_score, :combined_score, :signal, :trend_score, :updated_at)""",
+            payload.scores,
+        )
+        counts["scores"] = len(payload.scores)
+
+    if payload.regime:
+        conn.executemany(
+            """INSERT OR REPLACE INTO regime_states
+               (date, hmm_regime, hmm_regime_label, hmm_confidence,
+                xgb_regime, xgb_confidence, regime_agreement, updated_at)
+               VALUES (:date, :hmm_regime, :hmm_regime_label, :hmm_confidence,
+                       :xgb_regime, :xgb_confidence, :regime_agreement, :updated_at)""",
+            payload.regime,
+        )
+        counts["regime"] = len(payload.regime)
+
+    conn.commit()
+    conn.close()
+    return {"status": "ok", "synced": counts}
 
 
 # ---------- Static frontend ----------
