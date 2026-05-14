@@ -33,7 +33,7 @@ def get_scores(conn: sqlite3.Connection, since_date: str) -> list[dict]:
                   quality_score, growth_score, balance_sheet_score, technical_score,
                   sector_score, combined_score, signal, trend_score, updated_at
            FROM analysis_scores
-           WHERE date >= ?
+           WHERE date >= ? AND model_type = 'long_term'
            ORDER BY date""",
         (since_date,),
     ).fetchall()
