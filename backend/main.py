@@ -134,6 +134,9 @@ if DIST_DIR.is_dir():
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
         """Serve the React SPA — all non-API routes fall through to index.html."""
+        # Skip API paths so they don't get caught by the SPA fallback
+        if full_path.startswith(("agent/", "data/", "health")):
+            raise HTTPException(status_code=404, detail="Not found")
         file = DIST_DIR / full_path
         if file.is_file():
             return FileResponse(file)
