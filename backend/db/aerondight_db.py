@@ -1,9 +1,15 @@
 """Aerondight local DB — stores synced scores and regime data from the private research system."""
 
+import os
 import sqlite3
 from pathlib import Path
 
-AERONDIGHT_DB_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "aerondight.db"
+# On Railway, use the persistent volume at /data; locally, use project-relative data/
+_volume = os.getenv("RAILWAY_VOLUME_MOUNT_PATH", "")
+if _volume:
+    AERONDIGHT_DB_PATH = Path(_volume) / "aerondight.db"
+else:
+    AERONDIGHT_DB_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "aerondight.db"
 
 
 def get_connection() -> sqlite3.Connection:
